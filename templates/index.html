@@ -1,0 +1,332 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Market Analysis Dashboard</title>
+    <script src="https://d3js.org/d3.v7.min.js"></script>
+    <style>
+        body { font-family: sans-serif; }
+        .chart-container { display: flex; flex-direction: column; align-items: center; margin-bottom: 30px; }
+        .chart-title { font-size: 1.3em; font-weight: bold; margin-bottom: 10px; }
+        svg { width: 100%; max-width: 800px; height: 400px; }
+        .tooltip {
+            position: absolute;
+            padding: 10px;
+            background-color: white;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            pointer-events: none;
+            opacity: 0;
+        }
+        .axis path,
+        .axis line {
+            fill: none;
+            stroke: #333;
+            shape-rendering: crispEdges;
+        }
+        .axis text {
+            font-size: 0.8em;
+        }
+        .bar { fill: steelblue; }
+        .line {
+            fill: none;
+            stroke: steelblue;
+            stroke-width: 2;
+        }
+        .dot {
+            fill: white;
+            stroke: steelblue;
+            stroke-width: 2;
+        }
+        .bubble {
+            fill: steelblue;
+            opacity: 0.6;
+        }
+    </style>
+</head>
+<body>
+    <h1>Market Analysis Dashboard</h1>
+
+    <div class="chart-container">
+        <div class="chart-title">Market Share</div>
+        <div id="marketShareChart"></div>
+    </div>
+
+    <div class="chart-container">
+        <div class="chart-title">Revenue Trends (Quarterly)</div>
+        <div id="revenueTrendsChart"></div>
+    </div>
+
+    <div class="chart-container">
+        <div class="chart-title">Market Segmentation</div>
+        <div id="marketSegmentationChart"></div>
+    </div>
+
+    <script>
+        // Fetch data and create charts
+        Promise.all([
+            fetch('/api/marketShare').then(response => response.json()),
+            fetch('/api/revenueTrends').then(response => response.json()),
+            fetch('/api/marketSegmentation').then(response => response.json())
+        ]).then(data => {
+            createMarketShareChart(data[0], "#marketShareChart");
+            createRevenueTrendsChart(data[1], "#revenueTrendsChart");
+            createMarketSegmentationChart(data[2], "#marketSegmentationChart");
+        }).catch(error => console.error("Error fetching data:", error));
+
+        // 1. Market Share Bar Chart
+        function createMarketShareChart(data, containerId) {
+            const margin = {top: 20, right: 20, bottom: 30, left: 40};
+            const width = 800 - margin.left - margin.right;
+            const height = 400 - margin.top - margin.bottom;
+
+            const svg = d3.select(containerId)
+                .append("svg")
+                .attr("width", width + margin.left + margin.right)
+                .attr("height", height + margin.top + margin.bottom)
+                .append("g")
+                .attr("transform", `translate(${margin.left},${margin.top})`);
+
+            const x = d3.scaleBand()
+                .range([0, width])
+                .padding(0.1)
+                .domain(data.map(d => d.company));
+
+            const y = d3.scaleLinear()
+                .range([height, 0])
+                .domain([0, d3.max(data, d => d.marketShare)]);
+
+            // X Axis
+            svg.append("g")
+                .attr("transform", `translate(0,${height})`)
+                .attr("class", "axis")
+                .call(d3.axisBottom(x));
+
+            // Y Axis
+            svg.append("g")
+                .attr("class", "axis")
+                .call(d3.axisLeft(y).tickFormat(d3.format(".0%")));
+
+            // Tooltip
+            const tooltip = d3.select("body").append("div")
+                .attr("class", "tooltip")
+                .style("opacity", 0);
+
+            // Bars
+            svg.selectAll(".bar")
+                .data(data)
+                .enter().append("rect")
+                .attr("class", "bar")
+                .attr("x", d => x(d.company))
+                .attr("width", x.bandwidth())
+                .attr("y", height) // Start from bottom and animate upwards
+                .attr("height", 0)
+                .on("mouseover", (event, d) => {
+                    tooltip.transition()
+                        .duration(200)
+                        .style("opacity", .9);
+                    tooltip.html(`${d.company}<br/>Market Share: ${d3.format(".1%")(d.marketShare)}`)
+                        .style("left", (event.pageX) + "px")
+                        .style("top", (event.pageY - 28) + "px");
+                })
+                .on("mouseout", () => {
+                    tooltip.transition()
+                        .duration(500)
+                        .style("opacity", 0);
+                })
+                .transition() // Animation
+                .duration(800)
+                .delay((d, i) => i * 100)
+                .attr("y", d => y(d.marketShare))
+                .attr("height", d => height - y(d.marketShare));
+        }
+
+        // 2. Revenue Trends Line Chart
+        function createRevenueTrendsChart(data, containerId) {
+            const margin = {top: 20, right: 50, bottom: 30, left: 50}; // Increased right margin for legend
+            const width = 800 - margin.left - margin.right;
+            const height = 400 - margin.top - margin.bottom;
+
+            const svg = d3.select(containerId)
+                .append("svg")
+                .attr("width", width + margin.left + margin.right)
+                .attr("height", height + margin.top + margin.bottom)
+                .append("g")
+                .attr("transform", `translate(${margin.left},${margin.top})`);
+
+            const quarters = data[0].quarterlyRevenue.map(q => q.quarter);
+            const allQuarters = quarters; // Use this for x domain
+
+            const x = d3.scalePoint()
+                .range([0, width])
+                .domain(allQuarters); // Use all quarters for domain
+
+            const y = d3.scaleLinear()
+                .range([height, 0])
+                .domain([0, d3.max(data, company => d3.max(company.quarterlyRevenue, d => d.revenue))]);
+
+            // X Axis
+            svg.append("g")
+                .attr("transform", `translate(0,${height})`)
+                .attr("class", "axis")
+                .call(d3.axisBottom(x));
+
+            // Y Axis
+            svg.append("g")
+                .attr("class", "axis")
+                .call(d3.axisLeft(y));
+
+            const line = d3.line()
+                .x(d => x(d.quarter))
+                .y(d => y(d.revenue));
+
+            // Tooltip
+            const tooltip = d3.select("body").append("div")
+                .attr("class", "tooltip")
+                .style("opacity", 0);
+
+            // Draw lines and dots for each company
+            data.forEach((company, index) => {
+                const companyColor = d3.schemeCategory10[index % 10]; // Assign colors
+
+                // Line Path
+                const path = svg.append("path")
+                    .datum(company.quarterlyRevenue)
+                    .attr("class", "line")
+                    .attr("d", line)
+                    .style("stroke", companyColor)
+                    .style("opacity", 0) // Start as transparent for animation
+                    .transition()
+                    .duration(1000)
+                    .delay(index * 200)
+                    .style("opacity", 1);
+
+                // Line animation (optional, path drawing effect)
+                const totalLength = path.node().getTotalLength();
+                path
+                    .attr("stroke-dasharray", totalLength + " " + totalLength)
+                    .attr("stroke-dashoffset", totalLength)
+                    .transition()
+                    .duration(1500)
+                    .delay(index * 200)
+                    .ease(d3.easeLinear)
+                    .attr("stroke-dashoffset", 0);
+
+
+                // Dots for each data point
+                svg.selectAll(`.dot-${company.company.replace(/\s+/g, '')}`) // Unique class per company
+                    .data(company.quarterlyRevenue)
+                    .enter().append("circle")
+                    .attr("class", `dot dot-${company.company.replace(/\s+/g, '')}`)
+                    .attr("cx", d => x(d.quarter))
+                    .attr("cy", d => y(d.revenue))
+                    .attr("r", 5)
+                    .style("fill", "white")
+                    .style("stroke", companyColor)
+                    .style("stroke-width", 2)
+                    .on("mouseover", (event, d) => {
+                        tooltip.transition()
+                            .duration(200)
+                            .style("opacity", .9);
+                        tooltip.html(`${company.company}<br/>${d.quarter}: $${d.revenue.toFixed(2)}`)
+                            .style("left", (event.pageX) + "px")
+                            .style("top", (event.pageY - 28) + "px");
+                    })
+                    .on("mouseout", () => {
+                        tooltip.transition()
+                            .duration(500)
+                            .style("opacity", 0);
+                    });
+
+
+                // Legend (placed on the right side)
+                svg.append("circle")
+                    .attr("cx", width + margin.right - 80) // Adjust position
+                    .attr("cy", 20 + index * 25) // Vertical position for each legend item
+                    .attr("r", 6)
+                    .style("fill", companyColor);
+
+                svg.append("text")
+                    .attr("x", width + margin.right - 70) // Adjust text position
+                    .attr("y", 20 + index * 25)
+                    .attr("dy", "0.32em")
+                    .text(company.company)
+                    .style("font-size", "0.9em")
+                    .attr("text-anchor", "start")
+                    .style("fill", "#333");
+
+            });
+
+        }
+
+
+        // 3. Market Segmentation Bubble Chart
+        function createMarketSegmentationChart(data, containerId) {
+            const margin = {top: 20, right: 20, bottom: 20, left: 20};
+            const width = 600 - margin.left - margin.right; // Reduced width for bubble chart
+            const height = 400 - margin.top - margin.bottom;
+
+            const svg = d3.select(containerId)
+                .append("svg")
+                .attr("width", width + margin.left + margin.right)
+                .attr("height", height + margin.top + margin.bottom)
+                .append("g")
+                .attr("transform", `translate(${margin.left},${margin.top})`);
+
+            const maxRevenue = d3.max(data, d => d.revenue);
+            const radiusScale = d3.scaleSqrt()
+                .domain([0, maxRevenue])
+                .range([0, 60]); // Adjust bubble size range
+
+            // Tooltip
+            const tooltip = d3.select("body").append("div")
+                .attr("class", "tooltip")
+                .style("opacity", 0);
+
+            // Simulation for bubble layout
+            const simulation = d3.forceSimulation(data)
+                .force("x", d3.forceX(width / 2).strength(0.15)) // Center x
+                .force("y", d3.forceY(height / 2).strength(0.15)) // Center y
+                .force("collide", d3.forceCollide(d => radiusScale(d.revenue) + 2).iterations(2))
+                .on("tick", ticked);
+
+
+            function ticked() {
+                const bubbles = svg.selectAll(".bubble")
+                    .data(data)
+                    .join("circle")
+                    .attr("class", "bubble")
+                    .attr("r", d => radiusScale(d.revenue))
+                    .attr("cx", d => d.x)
+                    .attr("cy", d => d.y)
+                    .style("fill", "steelblue")
+                    .style("opacity", 0) // Start as transparent for animation
+                    .on("mouseover", (event, d) => {
+                        tooltip.transition()
+                            .duration(200)
+                            .style("opacity", .9);
+                        tooltip.html(`${d.segment}<br/>Revenue: $${d.revenue.toFixed(2)}M<br/>Growth: ${d3.format(".1%")(d.growthRate)}`)
+                            .style("left", (event.pageX) + "px")
+                            .style("top", (event.pageY - 28) + "px");
+                    })
+                    .on("mouseout", () => {
+                        tooltip.transition()
+                            .duration(500)
+                            .style("opacity", 0);
+                    });
+
+                bubbles.transition() // Animation
+                    .duration(1000)
+                    .delay((d, i) => i * 50)
+                    .style("opacity", 0.6);
+            }
+
+            // Initial simulation start
+            simulation.alpha(1).restart();
+        }
+
+    </script>
+</body>
+</html>
+```
